@@ -1,4 +1,4 @@
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, make_response
 import requests
 import io
 from reportlab.lib.pagesizes import A4
@@ -21,6 +21,13 @@ GREEN   = HexColor("#16a34a")
 WHITE   = HexColor("#ffffff")
 TEXT    = HexColor("#1a1a2e")
 BORDER  = HexColor("#eeeeee")
+ 
+def cors(response, code=200):
+    r = make_response(response, code)
+    r.headers["Access-Control-Allow-Origin"]  = "*"
+    r.headers["Access-Control-Allow-Headers"] = "Content-Type"
+    r.headers["Access-Control-Allow-Methods"] = "POST, OPTIONS, GET"
+    return r
  
 def draw_M(c, cx, cy, size):
     s = size
@@ -160,12 +167,12 @@ def generate_pdf(data):
     c.setFillColor(WHITE); c.setFont("Helvetica-Bold", 6)
     c.drawCentredString(2.6*cm, 1.05*cm, "MEXUM")
     c.setFillColor(HexColor("#9b8ec4")); c.setFont("Helvetica", 7)
-    c.drawString(4.0*cm, 2.45*cm, "Mexum Private Bank  |  25 Avenue de l Opera, 75001 Paris, France")
+    c.drawString(4.0*cm, 2.45*cm, "Mexum Private Bank  |  25 Avenue de l Opera, 75001 Paris")
     c.drawString(4.0*cm, 2.05*cm, "service@mexum.bank  |  0800 427 391  |  www.mexum.bank")
     c.setFillColor(HexColor("#5a4a7a"))
-    c.drawString(4.0*cm, 1.65*cm, "Agree ACPR n 17328  |  Membre FBF  |  Garantie FGDR  |  Reg. UE 260/2012")
-    c.drawString(4.0*cm, 1.25*cm, "Ce document a valeur de justificatif officiel. Conservez-le pour vos dossiers.")
-    c.drawString(4.0*cm, 0.85*cm, "Genere le "+ds+"  |  Signature electronique : MEX-SIGN-2026")
+    c.drawString(4.0*cm, 1.65*cm, "Agree ACPR n 17328  |  Membre FBF  |  Garantie FGDR")
+    c.drawString(4.0*cm, 1.25*cm, "Ce document a valeur de justificatif officiel.")
+    c.drawString(4.0*cm, 0.85*cm, "Genere le "+ds+"  |  Signature : MEX-SIGN-2026")
     c.setFillColor(PURPLE2); c.setFont("Helvetica-Bold", 7)
     c.drawRightString(W-2*cm, 0.85*cm, "Page 1 / 1")
  
@@ -173,14 +180,17 @@ def generate_pdf(data):
     buf.seek(0)
     return buf
  
+@app.after_request
+def add_cors(response):
+    response.headers["Access-Control-Allow-Origin"]  = "*"
+    response.headers["Access-Control-Allow-Headers"] = "Content-Type"
+    response.headers["Access-Control-Allow-Methods"] = "POST, OPTIONS, GET"
+    return response
+ 
 @app.route("/justificatif", methods=["POST", "OPTIONS"])
 def justificatif():
     if request.method == "OPTIONS":
-        response = app.make_response("")
-        response.headers["Access-Control-Allow-Origin"] = "*"
-        response.headers["Access-Control-Allow-Headers"] = "Content-Type"
-        response.headers["Access-Control-Allow-Methods"] = "POST, OPTIONS"
-        return response, 204
+        return "", 204
     data = request.json or {}
     try:
         pdf_buf = generate_pdf(data)
@@ -196,13 +206,12 @@ def justificatif():
             files={"document": (fname, pdf_buf, "application/pdf")}
         )
         resp = r.json()
-        response = jsonify({"ok": True} if resp.get("ok") else {"ok": False, "error": resp.get("description")})
-        response.headers["Access-Control-Allow-Origin"] = "*"
-        return response
+        if resp.get("ok"):
+            return jsonify({"ok": True})
+        else:
+            return jsonify({"ok": False, "error": resp.get("description","unknown")}), 400
     except Exception as e:
-        response = jsonify({"ok": False, "error": str(e)})
-        response.headers["Access-Control-Allow-Origin"] = "*"
-        return response, 500
+        return jsonify({"ok": False, "error": str(e)}), 500
  
 @app.route("/", methods=["GET"])
 def index():
